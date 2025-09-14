@@ -144,50 +144,22 @@ configure_ffmpeg() {
     
     cd "ffmpeg-$FFMPEG_VERSION"
     
-    # Base configuration
-    CONFIG_OPTS="--prefix=$PREFIX"
-    CONFIG_OPTS="$CONFIG_OPTS --enable-gpl --enable-version3 --enable-nonfree"
-    CONFIG_OPTS="$CONFIG_OPTS --enable-static --disable-shared"
+    # Export environment variables for the configuration script
+    export FFMPEG_VERSION
+    export BUILD_TYPE
+    export PREFIX
+    export PLATFORM
+    export ARCH
+    export ENABLE_CODECS
     
-    # Platform-specific options
-    case $PLATFORM in
-        darwin)
-            CONFIG_OPTS="$CONFIG_OPTS --target-os=darwin"
-            if [ "$ARCH" = "arm64" ]; then
-                CONFIG_OPTS="$CONFIG_OPTS --arch=arm64 --enable-cross-compile"
-            fi
-            ;;
-    esac
+    # Use the robust configuration script, fall back to minimal if it fails
+    chmod +x ../scripts/configure-ffmpeg.sh
+    chmod +x ../scripts/configure-minimal.sh
     
-    # Codec options
-    IFS=',' read -ra CODEC_ARRAY <<< "$ENABLE_CODECS"
-    for codec in "${CODEC_ARRAY[@]}"; do
-        case $codec in
-            libx264) CONFIG_OPTS="$CONFIG_OPTS --enable-libx264" ;;
-            libx265) CONFIG_OPTS="$CONFIG_OPTS --enable-libx265" ;;
-            libvpx) CONFIG_OPTS="$CONFIG_OPTS --enable-libvpx" ;;
-            libfdk-aac) CONFIG_OPTS="$CONFIG_OPTS --enable-libfdk-aac" ;;
-            libmp3lame) CONFIG_OPTS="$CONFIG_OPTS --enable-libmp3lame" ;;
-            libopus) CONFIG_OPTS="$CONFIG_OPTS --enable-libopus" ;;
-            libvorbis) CONFIG_OPTS="$CONFIG_OPTS --enable-libvorbis" ;;
-            libtheora) CONFIG_OPTS="$CONFIG_OPTS --enable-libtheora" ;;
-            libass) CONFIG_OPTS="$CONFIG_OPTS --enable-libass" ;;
-            libfreetype) CONFIG_OPTS="$CONFIG_OPTS --enable-libfreetype" ;;
-            gnutls) CONFIG_OPTS="$CONFIG_OPTS --enable-gnutls" ;;
-            libsdl2) CONFIG_OPTS="$CONFIG_OPTS --enable-libsdl2" ;;
-            *) warn "Unknown codec: $codec" ;;
-        esac
-    done
-    
-    # Build type options
-    if [ "$BUILD_TYPE" = "debug" ]; then
-        CONFIG_OPTS="$CONFIG_OPTS --enable-debug --disable-optimizations --disable-stripping"
-    else
-        CONFIG_OPTS="$CONFIG_OPTS --enable-optimizations"
+    if ! ../scripts/configure-ffmpeg.sh; then
+        warn "Robust configuration failed, trying minimal configuration..."
+        ../scripts/configure-minimal.sh
     fi
-    
-    log "Configuration: $CONFIG_OPTS"
-    ./configure $CONFIG_OPTS
 }
 
 build_ffmpeg() {

@@ -62,27 +62,17 @@ jobs:
     - name: Configure FFmpeg
       run: |
         cd ffmpeg-src
-        ./configure \
-          --prefix=/usr/local \
-          --enable-gpl \
-          --enable-version3 \
-          --enable-nonfree \
-          --enable-static \
-          --disable-shared \
-          --enable-libx264 \
-          --enable-libx265 \
-          --enable-libvpx \
-          --enable-libfdk-aac \
-          --enable-libmp3lame \
-          --enable-libopus \
-          --enable-libvorbis \
-          --enable-libtheora \
-          --enable-libass \
-          --enable-libfreetype \
-          --enable-gnutls \
-          --extra-cflags="-static" \
-          --extra-ldflags="-static" \
-          --pkg-config-flags="--static"
+        export ARCH=${{ matrix.arch }}
+        export BUILD_TYPE=release
+        export PLATFORM=linux
+        chmod +x ../scripts/configure-ffmpeg.sh
+        chmod +x ../scripts/configure-minimal.sh
+        
+        # Try robust configuration first, fall back to minimal if it fails
+        if ! ../scripts/configure-ffmpeg.sh; then
+          echo "Robust configuration failed, trying minimal configuration..."
+          ../scripts/configure-minimal.sh
+        fi
     
     - name: Build FFmpeg
       run: |
@@ -147,31 +137,17 @@ jobs:
       run: |
         cd ffmpeg-src
         export MACOSX_DEPLOYMENT_TARGET=${{ matrix.deployment_target }}
-        export PKG_CONFIG_PATH="/opt/homebrew/lib/pkgconfig:/usr/local/lib/pkgconfig"
+        export ARCH=${{ matrix.arch }}
+        export BUILD_TYPE=release
+        export PLATFORM=darwin
+        chmod +x ../scripts/configure-ffmpeg.sh
+        chmod +x ../scripts/configure-minimal.sh
         
-        ./configure \
-          --prefix=/usr/local \
-          --arch=${{ matrix.arch }} \
-          --target-os=darwin \
-          --enable-cross-compile \
-          --enable-gpl \
-          --enable-version3 \
-          --enable-nonfree \
-          --enable-static \
-          --disable-shared \
-          --enable-libx264 \
-          --enable-libx265 \
-          --enable-libvpx \
-          --enable-libfdk-aac \
-          --enable-libmp3lame \
-          --enable-libopus \
-          --enable-libvorbis \
-          --enable-libtheora \
-          --enable-libass \
-          --enable-libfreetype \
-          --enable-gnutls \
-          --extra-cflags="-mmacosx-version-min=${{ matrix.deployment_target }}" \
-          --extra-ldflags="-mmacosx-version-min=${{ matrix.deployment_target }}"
+        # Try robust configuration first, fall back to minimal if it fails
+        if ! ../scripts/configure-ffmpeg.sh; then
+          echo "Robust configuration failed, trying minimal configuration..."
+          ../scripts/configure-minimal.sh
+        fi
     
     - name: Build FFmpeg
       run: |
@@ -242,30 +218,17 @@ jobs:
       shell: msys2 {0}
       run: |
         cd ffmpeg-src
-        ./configure \
-          --prefix=/usr/local \
-          --arch=${{ matrix.arch }} \
-          --target-os=mingw32 \
-          --cross-prefix=${{ matrix.arch }}-w64-mingw32- \
-          --enable-gpl \
-          --enable-version3 \
-          --enable-nonfree \
-          --enable-static \
-          --disable-shared \
-          --enable-libx264 \
-          --enable-libx265 \
-          --enable-libvpx \
-          --enable-libfdk-aac \
-          --enable-libmp3lame \
-          --enable-libopus \
-          --enable-libvorbis \
-          --enable-libtheora \
-          --enable-libass \
-          --enable-libfreetype \
-          --enable-gnutls \
-          --enable-libsdl2 \
-          --extra-cflags="-static" \
-          --extra-ldflags="-static"
+        export ARCH=${{ matrix.arch }}
+        export BUILD_TYPE=release
+        export PLATFORM=mingw32
+        chmod +x ../scripts/configure-ffmpeg.sh
+        chmod +x ../scripts/configure-minimal.sh
+        
+        # Try robust configuration first, fall back to minimal if it fails
+        if ! ../scripts/configure-ffmpeg.sh; then
+          echo "Robust configuration failed, trying minimal configuration..."
+          ../scripts/configure-minimal.sh
+        fi
     
     - name: Build FFmpeg
       shell: msys2 {0}
