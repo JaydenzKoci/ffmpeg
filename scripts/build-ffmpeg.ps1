@@ -5,6 +5,8 @@ param(
     [string]$Version = "6.1",
     [ValidateSet("release", "debug")]
     [string]$BuildType = "release",
+    [ValidateSet("x86_64", "i686")]
+    [string]$Architecture = "x86_64",
     [string]$Codecs = "libx264,libx265,libvpx,libfdk-aac,libmp3lame,libopus",
     [string]$Prefix = "C:\ffmpeg",
     [int]$Jobs = $env:NUMBER_OF_PROCESSORS,
@@ -44,6 +46,7 @@ Usage: .\build-ffmpeg.ps1 [OPTIONS]
 Parameters:
     -Version VERSION      FFmpeg version to build (default: $Version)
     -BuildType TYPE       Build type: release|debug (default: $BuildType)
+    -Architecture ARCH    Target architecture: x86_64|i686 (default: $Architecture)
     -Codecs CODECS        Comma-separated list of codecs to enable
     -Prefix PREFIX        Installation prefix (default: $Prefix)
     -Jobs JOBS            Number of parallel jobs (default: $Jobs)
@@ -51,7 +54,7 @@ Parameters:
 
 Examples:
     .\build-ffmpeg.ps1 -Version "6.1" -BuildType "release"
-    .\build-ffmpeg.ps1 -Codecs "libx264,libx265,libvpx" -Jobs 8
+    .\build-ffmpeg.ps1 -Architecture "i686" -Codecs "libx264,libx265,libvpx" -Jobs 8
     .\build-ffmpeg.ps1 -BuildType "debug" -Prefix "C:\ffmpeg-debug"
 
 Requirements:
@@ -61,23 +64,29 @@ Requirements:
 
 Setup MSYS2:
     1. Download and install MSYS2 from https://www.msys2.org/
-    2. Open MSYS2 terminal and run:
-       pacman -S mingw-w64-x86_64-toolchain
-       pacman -S mingw-w64-x86_64-yasm
-       pacman -S mingw-w64-x86_64-nasm
-       pacman -S mingw-w64-x86_64-pkg-config
-       pacman -S mingw-w64-x86_64-x264
-       pacman -S mingw-w64-x86_64-x265
-       pacman -S mingw-w64-x86_64-libvpx
+    2. Open MSYS2 terminal and run (replace ARCH with x86_64 or i686):
+       pacman -S mingw-w64-ARCH-toolchain
+       pacman -S mingw-w64-ARCH-yasm
+       pacman -S mingw-w64-ARCH-nasm
+       pacman -S mingw-w64-ARCH-pkg-config
+       pacman -S mingw-w64-ARCH-x264
+       pacman -S mingw-w64-ARCH-x265
+       pacman -S mingw-w64-ARCH-libvpx
 "@
 }
 
 function Test-Prerequisites {
-    Write-Info "Checking prerequisites..."
+    Write-Info "Checking prerequisites for $Architecture architecture..."
     
     # Check if we're in a MinGW environment
     if (-not $env:MINGW_PREFIX) {
         Write-Error "This script must be run in a MinGW-w64 environment (MSYS2)"
+    }
+    
+    # Verify correct MSYS2 environment for architecture
+    $expectedEnv = if ($Architecture -eq "x86_64") { "MINGW64" } else { "MINGW32" }
+    if ($env:MSYSTEM -ne $expectedEnv) {
+        Write-Error "Wrong MSYS2 environment. Expected: $expectedEnv, Current: $($env:MSYSTEM)"
     }
     
     # Check for required tools
@@ -88,25 +97,25 @@ function Test-Prerequisites {
         }
     }
     
-    Write-Info "Prerequisites check passed"
+    Write-Info "Prerequisites check passed for $Architecture"
 }
 
 function Install-Dependencies {
-    Write-Info "Installing dependencies via pacman..."
+    Write-Info "Installing dependencies via pacman for $Architecture..."
     
     $packages = @(
-        "mingw-w64-x86_64-x264",
-        "mingw-w64-x86_64-x265", 
-        "mingw-w64-x86_64-libvpx",
-        "mingw-w64-x86_64-fdk-aac",
-        "mingw-w64-x86_64-lame",
-        "mingw-w64-x86_64-libopus",
-        "mingw-w64-x86_64-libvorbis",
-        "mingw-w64-x86_64-libtheora",
-        "mingw-w64-x86_64-libass",
-        "mingw-w64-x86_64-freetype",
-        "mingw-w64-x86_64-gnutls",
-        "mingw-w64-x86_64-SDL2"
+        "mingw-w64-$Architecture-x264",
+        "mingw-w64-$Architecture-x265", 
+        "mingw-w64-$Architecture-libvpx",
+        "mingw-w64-$Architecture-fdk-aac",
+        "mingw-w64-$Architecture-lame",
+        "mingw-w64-$Architecture-libopus",
+        "mingw-w64-$Architecture-libvorbis",
+        "mingw-w64-$Architecture-libtheora",
+        "mingw-w64-$Architecture-libass",
+        "mingw-w64-$Architecture-freetype",
+        "mingw-w64-$Architecture-gnutls",
+        "mingw-w64-$Architecture-SDL2"
     )
     
     foreach ($package in $packages) {
@@ -154,6 +163,7 @@ function Configure-FFmpeg {
     Set-Location "ffmpeg-$Version"
     
     # Base configuration
+    $crossPrefix = "$Architecture-w64-mingw32-"
     $configOpts = @(
         "--prefix=$Prefix",
         "--enable-gpl",
@@ -162,8 +172,8 @@ function Configure-FFmpeg {
         "--enable-static",
         "--disable-shared",
         "--target-os=mingw32",
-        "--arch=x86_64",
-        "--cross-prefix=x86_64-w64-mingw32-"
+        "--arch=$Architecture",
+        "--cross-prefix=$crossPrefix"
     )
     
     # Add codec options
@@ -214,7 +224,7 @@ function Build-FFmpeg {
 function Create-Distribution {
     Write-Info "Creating distribution..."
     
-    $distDir = "..\dist\windows-x86_64-$BuildType"
+    $distDir = "..\dist\windows-$Architecture-$BuildType"
     New-Item -ItemType Directory -Path $distDir -Force | Out-Null
     
     # Copy binaries
@@ -240,7 +250,7 @@ FFmpeg Build Information
 ========================
 Version: $Version
 Platform: Windows
-Architecture: x86_64
+Architecture: $Architecture
 Build Type: $BuildType
 Codecs: $Codecs
 Build Date: $(Get-Date)
@@ -254,7 +264,7 @@ Build Date: $(Get-Date)
 function Test-Build {
     Write-Info "Testing build..."
     
-    $distDir = "..\dist\windows-x86_64-$BuildType"
+    $distDir = "..\dist\windows-$Architecture-$BuildType"
     
     & "$distDir\ffmpeg.exe" -version | Select-Object -First 1
     & "$distDir\ffprobe.exe" -version | Select-Object -First 1
@@ -277,9 +287,14 @@ if ($BuildType -notin @("release", "debug")) {
     Write-Error "Invalid build type: $BuildType (must be 'release' or 'debug')"
 }
 
+# Validate architecture
+if ($Architecture -notin @("x86_64", "i686")) {
+    Write-Error "Invalid architecture: $Architecture (must be 'x86_64' or 'i686')"
+}
+
 Write-Info "Starting FFmpeg build process..."
 Write-Info "Version: $Version"
-Write-Info "Platform: Windows (x86_64)"
+Write-Info "Platform: Windows ($Architecture)"
 Write-Info "Build Type: $BuildType"
 Write-Info "Codecs: $Codecs"
 
@@ -293,7 +308,7 @@ try {
     Test-Build
     
     Write-Info "FFmpeg build completed successfully!"
-    Write-Info "Binaries available in: dist\windows-x86_64-$BuildType\"
+    Write-Info "Binaries available in: dist\windows-$Architecture-$BuildType\"
 } catch {
     Write-Error "Build process failed: $_"
 } finally {

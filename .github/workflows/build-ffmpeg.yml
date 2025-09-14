@@ -51,8 +51,7 @@ jobs:
           libtheora-dev \
           libass-dev \
           libfreetype6-dev \
-          libgnutls28-dev \
-          libsdl2-dev
+          libgnutls28-dev
     
     - name: Download FFmpeg source
       run: |
@@ -81,7 +80,6 @@ jobs:
           --enable-libass \
           --enable-libfreetype \
           --enable-gnutls \
-          --enable-libsdl2 \
           --extra-cflags="-static" \
           --extra-ldflags="-static" \
           --pkg-config-flags="--static"
@@ -137,8 +135,7 @@ jobs:
           theora \
           libass \
           freetype \
-          gnutls \
-          sdl2
+          gnutls
     
     - name: Download FFmpeg source
       run: |
@@ -173,7 +170,6 @@ jobs:
           --enable-libass \
           --enable-libfreetype \
           --enable-gnutls \
-          --enable-libsdl2 \
           --extra-cflags="-mmacosx-version-min=${{ matrix.deployment_target }}" \
           --extra-ldflags="-mmacosx-version-min=${{ matrix.deployment_target }}"
     
@@ -196,8 +192,104 @@ jobs:
         name: ffmpeg-macos-${{ matrix.arch }}
         path: dist/macos-${{ matrix.arch }}/
 
+  build-windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        arch: [x86_64, i686]
+        include:
+          - arch: x86_64
+            msys_arch: x86_64
+            mingw_prefix: mingw64
+          - arch: i686
+            msys_arch: i686
+            mingw_prefix: mingw32
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup MSYS2
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: ${{ matrix.mingw_prefix }}
+        update: true
+        install: >-
+          mingw-w64-${{ matrix.msys_arch }}-toolchain
+          mingw-w64-${{ matrix.msys_arch }}-yasm
+          mingw-w64-${{ matrix.msys_arch }}-nasm
+          mingw-w64-${{ matrix.msys_arch }}-pkg-config
+          mingw-w64-${{ matrix.msys_arch }}-x264
+          mingw-w64-${{ matrix.msys_arch }}-x265
+          mingw-w64-${{ matrix.msys_arch }}-libvpx
+          mingw-w64-${{ matrix.msys_arch }}-fdk-aac
+          mingw-w64-${{ matrix.msys_arch }}-lame
+          mingw-w64-${{ matrix.msys_arch }}-libopus
+          mingw-w64-${{ matrix.msys_arch }}-libvorbis
+          mingw-w64-${{ matrix.msys_arch }}-libtheora
+          mingw-w64-${{ matrix.msys_arch }}-libass
+          mingw-w64-${{ matrix.msys_arch }}-freetype
+          mingw-w64-${{ matrix.msys_arch }}-gnutls
+          mingw-w64-${{ matrix.msys_arch }}-SDL2
+    
+    - name: Download FFmpeg source
+      shell: msys2 {0}
+      run: |
+        wget https://ffmpeg.org/releases/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz
+        tar -xf ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz
+        mv ffmpeg-${{ env.FFMPEG_VERSION }} ffmpeg-src
+    
+    - name: Configure FFmpeg
+      shell: msys2 {0}
+      run: |
+        cd ffmpeg-src
+        ./configure \
+          --prefix=/usr/local \
+          --arch=${{ matrix.arch }} \
+          --target-os=mingw32 \
+          --cross-prefix=${{ matrix.arch }}-w64-mingw32- \
+          --enable-gpl \
+          --enable-version3 \
+          --enable-nonfree \
+          --enable-static \
+          --disable-shared \
+          --enable-libx264 \
+          --enable-libx265 \
+          --enable-libvpx \
+          --enable-libfdk-aac \
+          --enable-libmp3lame \
+          --enable-libopus \
+          --enable-libvorbis \
+          --enable-libtheora \
+          --enable-libass \
+          --enable-libfreetype \
+          --enable-gnutls \
+          --enable-libsdl2 \
+          --extra-cflags="-static" \
+          --extra-ldflags="-static"
+    
+    - name: Build FFmpeg
+      shell: msys2 {0}
+      run: |
+        cd ffmpeg-src
+        make -j$(nproc)
+    
+    - name: Create distribution
+      shell: msys2 {0}
+      run: |
+        mkdir -p dist/windows-${{ matrix.arch }}
+        cp ffmpeg-src/ffmpeg.exe dist/windows-${{ matrix.arch }}/
+        cp ffmpeg-src/ffprobe.exe dist/windows-${{ matrix.arch }}/
+        cp ffmpeg-src/ffplay.exe dist/windows-${{ matrix.arch }}/
+        strip dist/windows-${{ matrix.arch }}/*
+    
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ffmpeg-windows-${{ matrix.arch }}
+        path: dist/windows-${{ matrix.arch }}/
+
   create-release:
-    needs: [build-linux, build-macos]
+    needs: [build-linux, build-macos, build-windows]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     

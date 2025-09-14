@@ -25,6 +25,7 @@ on:
         - all
         - linux-only
         - macos-only
+        - windows-only
         default: all
 
 env:
@@ -64,7 +65,6 @@ jobs:
           libass-dev \
           libfreetype6-dev \
           libgnutls28-dev \
-          libsdl2-dev \
           libwebp-dev \
           libaom-dev
     
@@ -147,6 +147,132 @@ jobs:
       with:
         name: ffmpeg-linux-x86_64-custom-${{ env.BUILD_TYPE }}
         path: dist/linux-x86_64-custom/
+
+  build-windows-custom:
+    if: ${{ github.event.inputs.platforms == 'all' || github.event.inputs.platforms == 'windows-only' }}
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        arch: [x86_64, i686]
+        include:
+          - arch: x86_64
+            msys_arch: x86_64
+            mingw_prefix: mingw64
+          - arch: i686
+            msys_arch: i686
+            mingw_prefix: mingw32
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup MSYS2
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: ${{ matrix.mingw_prefix }}
+        update: true
+        install: >-
+          mingw-w64-${{ matrix.msys_arch }}-toolchain
+          mingw-w64-${{ matrix.msys_arch }}-yasm
+          mingw-w64-${{ matrix.msys_arch }}-nasm
+          mingw-w64-${{ matrix.msys_arch }}-pkg-config
+          mingw-w64-${{ matrix.msys_arch }}-x264
+          mingw-w64-${{ matrix.msys_arch }}-x265
+          mingw-w64-${{ matrix.msys_arch }}-libvpx
+          mingw-w64-${{ matrix.msys_arch }}-fdk-aac
+          mingw-w64-${{ matrix.msys_arch }}-lame
+          mingw-w64-${{ matrix.msys_arch }}-libopus
+          mingw-w64-${{ matrix.msys_arch }}-libvorbis
+          mingw-w64-${{ matrix.msys_arch }}-libtheora
+          mingw-w64-${{ matrix.msys_arch }}-libass
+          mingw-w64-${{ matrix.msys_arch }}-freetype
+          mingw-w64-${{ matrix.msys_arch }}-gnutls
+          mingw-w64-${{ matrix.msys_arch }}-SDL2
+    
+    - name: Build additional codecs
+      shell: msys2 {0}
+      run: |
+        # SVT-AV1
+        if [[ "${{ github.event.inputs.enable_codecs }}" == *"libsvtav1"* ]]; then
+          git clone https://gitlab.com/AOMediaCodec/SVT-AV1.git
+          cd SVT-AV1/Build
+          cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -G "MSYS Makefiles"
+          make -j$(nproc)
+          make install
+          cd ../..
+        fi
+    
+    - name: Download and build FFmpeg
+      shell: msys2 {0}
+      run: |
+        wget https://ffmpeg.org/releases/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz
+        tar -xf ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz
+        cd ffmpeg-${{ env.FFMPEG_VERSION }}
+        
+        # Configure options
+        CONFIG_OPTS="--prefix=/usr/local \
+          --arch=${{ matrix.arch }} \
+          --target-os=mingw32 \
+          --cross-prefix=${{ matrix.arch }}-w64-mingw32- \
+          --enable-gpl \
+          --enable-version3 \
+          --enable-nonfree \
+          --enable-static \
+          --disable-shared \
+          --enable-libx264 \
+          --enable-libx265 \
+          --enable-libvpx \
+          --enable-libfdk-aac \
+          --enable-libmp3lame \
+          --enable-libopus \
+          --enable-libvorbis \
+          --enable-libtheora \
+          --enable-libass \
+          --enable-libfreetype \
+          --enable-gnutls \
+          --enable-libsdl2"
+        
+        # Add optional codecs
+        if [[ "${{ github.event.inputs.enable_codecs }}" == *"libwebp"* ]]; then
+          CONFIG_OPTS="$CONFIG_OPTS --enable-libwebp"
+        fi
+        if [[ "${{ github.event.inputs.enable_codecs }}" == *"libaom"* ]]; then
+          CONFIG_OPTS="$CONFIG_OPTS --enable-libaom"
+        fi
+        if [[ "${{ github.event.inputs.enable_codecs }}" == *"libsvtav1"* ]]; then
+          CONFIG_OPTS="$CONFIG_OPTS --enable-libsvtav1"
+        fi
+        
+        # Debug build options
+        if [[ "${{ env.BUILD_TYPE }}" == "debug" ]]; then
+          CONFIG_OPTS="$CONFIG_OPTS --enable-debug --disable-optimizations --disable-stripping"
+        else
+          CONFIG_OPTS="$CONFIG_OPTS --enable-optimizations"
+        fi
+        
+        ./configure $CONFIG_OPTS
+        make -j$(nproc)
+        
+        # Create distribution
+        mkdir -p ../dist/windows-${{ matrix.arch }}-custom
+        cp ffmpeg.exe ../dist/windows-${{ matrix.arch }}-custom/
+        cp ffprobe.exe ../dist/windows-${{ matrix.arch }}-custom/
+        cp ffplay.exe ../dist/windows-${{ matrix.arch }}-custom/
+        
+        if [[ "${{ env.BUILD_TYPE }}" == "release" ]]; then
+          strip ../dist/windows-${{ matrix.arch }}-custom/*
+        fi
+    
+    - name: Test build
+      shell: msys2 {0}
+      run: |
+        ./dist/windows-${{ matrix.arch }}-custom/ffmpeg.exe -version
+        ./dist/windows-${{ matrix.arch }}-custom/ffprobe.exe -version
+    
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ffmpeg-windows-${{ matrix.arch }}-custom-${{ env.BUILD_TYPE }}
+        path: dist/windows-${{ matrix.arch }}-custom/
 
   build-macos-custom:
     if: ${{ github.event.inputs.platforms == 'all' || github.event.inputs.platforms == 'macos-only' }}
@@ -263,8 +389,8 @@ jobs:
         path: dist/macos-${{ matrix.arch }}-custom/
 
   package-custom-builds:
-    needs: [build-linux-custom, build-macos-custom]
-    if: always() && (needs.build-linux-custom.result == 'success' || needs.build-macos-custom.result == 'success')
+    needs: [build-linux-custom, build-macos-custom, build-windows-custom]
+    if: always() && (needs.build-linux-custom.result == 'success' || needs.build-macos-custom.result == 'success' || needs.build-windows-custom.result == 'success')
     runs-on: ubuntu-latest
     
     steps:

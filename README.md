@@ -6,6 +6,7 @@ This repository provides automated workflows and scripts to build FFmpeg for mul
 
 - **Linux**: x86_64
 - **macOS**: x86_64 (Intel) and arm64 (Apple Silicon)
+- **Windows**: x86_64 (64-bit) and i686 (32-bit)
 
 ## Features
 
@@ -51,6 +52,14 @@ sudo apt-get install build-essential yasm nasm pkg-config wget
 brew install yasm nasm pkg-config
 ```
 
+**Windows:**
+```powershell
+# Install MSYS2 from https://www.msys2.org/
+# Then in MSYS2 terminal (replace ARCH with x86_64 or i686):
+pacman -S mingw-w64-ARCH-toolchain
+pacman -S mingw-w64-ARCH-yasm mingw-w64-ARCH-nasm mingw-w64-ARCH-pkg-config
+```
+
 #### Build Commands
 
 **Basic build:**
@@ -66,6 +75,15 @@ brew install yasm nasm pkg-config
 **Debug build:**
 ```bash
 ./scripts/build-ffmpeg.sh --type debug --jobs 8
+```
+
+**Windows builds:**
+```powershell
+# 64-bit build
+.\scripts\build-ffmpeg.ps1 -Architecture "x86_64"
+
+# 32-bit build
+.\scripts\build-ffmpeg.ps1 -Architecture "i686"
 ```
 
 ## Configuration Options
@@ -96,7 +114,7 @@ brew install yasm nasm pkg-config
 - **FFmpeg Version**: Specify version (e.g., "6.1", "5.1.4")
 - **Additional Codecs**: Comma-separated list (e.g., "libwebp,libaom,libsvtav1")
 - **Build Type**: Choose "release" or "debug"
-- **Platforms**: Select "all", "linux-only", or "macos-only"
+- **Platforms**: Select "all", "linux-only", "macos-only", or "windows-only"
 
 ### Artifacts
 
@@ -104,6 +122,8 @@ Built binaries are available as workflow artifacts:
 - `ffmpeg-linux-x86_64`
 - `ffmpeg-macos-x86_64`
 - `ffmpeg-macos-arm64`
+- `ffmpeg-windows-x86_64`
+- `ffmpeg-windows-i686`
 
 ### Releases
 
@@ -154,7 +174,14 @@ dist/
 │   └── build-info.txt
 ├── macos-x86_64-release/
 │   └── ...
-└── macos-arm64-release/
+├── macos-arm64-release/
+│   └── ...
+├── windows-x86_64-release/
+│   ├── ffmpeg.exe
+│   ├── ffprobe.exe
+│   ├── ffplay.exe
+│   └── build-info.txt
+└── windows-i686-release/
     └── ...
 ```
 
@@ -162,13 +189,22 @@ dist/
 
 Test your build:
 ```bash
+# Linux/macOS
 ./dist/linux-x86_64-release/ffmpeg -version
 ./dist/linux-x86_64-release/ffprobe -version
+
+# Windows
+.\dist\windows-x86_64-release\ffmpeg.exe -version
+.\dist\windows-x86_64-release\ffprobe.exe -version
 ```
 
 Check available codecs:
 ```bash
+# Linux/macOS
 ./dist/linux-x86_64-release/ffmpeg -codecs | grep -E "(libx264|libx265|libvpx)"
+
+# Windows
+.\dist\windows-x86_64-release\ffmpeg.exe -codecs | findstr "libx264 libx265 libvpx"
 ```
 
 ## Troubleshooting
