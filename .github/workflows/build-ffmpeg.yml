@@ -84,7 +84,14 @@ jobs:
         mkdir -p dist/linux-${{ matrix.arch }}
         cp ffmpeg-src/ffmpeg dist/linux-${{ matrix.arch }}/
         cp ffmpeg-src/ffprobe dist/linux-${{ matrix.arch }}/
-        cp ffmpeg-src/ffplay dist/linux-${{ matrix.arch }}/
+        
+        # Copy ffplay if it exists (requires SDL2)
+        if [ -f ffmpeg-src/ffplay ]; then
+          cp ffmpeg-src/ffplay dist/linux-${{ matrix.arch }}/
+        else
+          echo "ffplay not built (SDL2 not available)"
+        fi
+        
         strip dist/linux-${{ matrix.arch }}/*
     
     - name: Upload artifacts
@@ -159,7 +166,14 @@ jobs:
         mkdir -p dist/macos-${{ matrix.arch }}
         cp ffmpeg-src/ffmpeg dist/macos-${{ matrix.arch }}/
         cp ffmpeg-src/ffprobe dist/macos-${{ matrix.arch }}/
-        cp ffmpeg-src/ffplay dist/macos-${{ matrix.arch }}/
+        
+        # Copy ffplay if it exists (requires SDL2)
+        if [ -f ffmpeg-src/ffplay ]; then
+          cp ffmpeg-src/ffplay dist/macos-${{ matrix.arch }}/
+        else
+          echo "ffplay not built (SDL2 not available)"
+        fi
+        
         strip dist/macos-${{ matrix.arch }}/*
     
     - name: Upload artifacts
@@ -190,22 +204,71 @@ jobs:
         msystem: ${{ matrix.mingw_prefix }}
         update: true
         install: >-
-          mingw-w64-${{ matrix.msys_arch }}-toolchain
+          base-devel
+          mingw-w64-${{ matrix.msys_arch }}-gcc
+          mingw-w64-${{ matrix.msys_arch }}-binutils
+          mingw-w64-${{ matrix.msys_arch }}-crt-git
+          mingw-w64-${{ matrix.msys_arch }}-headers-git
+          mingw-w64-${{ matrix.msys_arch }}-winpthreads
+          mingw-w64-${{ matrix.msys_arch }}-make
           mingw-w64-${{ matrix.msys_arch }}-yasm
           mingw-w64-${{ matrix.msys_arch }}-nasm
           mingw-w64-${{ matrix.msys_arch }}-pkg-config
-          mingw-w64-${{ matrix.msys_arch }}-x264
-          mingw-w64-${{ matrix.msys_arch }}-x265
-          mingw-w64-${{ matrix.msys_arch }}-libvpx
-          mingw-w64-${{ matrix.msys_arch }}-fdk-aac
-          mingw-w64-${{ matrix.msys_arch }}-lame
-          mingw-w64-${{ matrix.msys_arch }}-libopus
-          mingw-w64-${{ matrix.msys_arch }}-libvorbis
-          mingw-w64-${{ matrix.msys_arch }}-libtheora
-          mingw-w64-${{ matrix.msys_arch }}-libass
-          mingw-w64-${{ matrix.msys_arch }}-freetype
-          mingw-w64-${{ matrix.msys_arch }}-gnutls
-          mingw-w64-${{ matrix.msys_arch }}-SDL2
+    
+    - name: Install codec libraries
+      shell: msys2 {0}
+      run: |
+        # Install codec libraries with error handling
+        packages=(
+          "mingw-w64-${{ matrix.msys_arch }}-x264"
+          "mingw-w64-${{ matrix.msys_arch }}-x265"
+          "mingw-w64-${{ matrix.msys_arch }}-libvpx"
+          "mingw-w64-${{ matrix.msys_arch }}-lame"
+          "mingw-w64-${{ matrix.msys_arch }}-libvorbis"
+          "mingw-w64-${{ matrix.msys_arch }}-libass"
+          "mingw-w64-${{ matrix.msys_arch }}-freetype"
+          "mingw-w64-${{ matrix.msys_arch }}-gnutls"
+          "mingw-w64-${{ matrix.msys_arch }}-SDL2"
+        )
+        
+        # Optional packages that might not be available for all architectures
+        optional_packages=(
+          "mingw-w64-${{ matrix.msys_arch }}-fdk-aac"
+          "mingw-w64-${{ matrix.msys_arch }}-opus"
+          "mingw-w64-${{ matrix.msys_arch }}-libtheora"
+        )
+        
+        # Install core packages
+        for package in "${packages[@]}"; do
+          echo "Installing $package..."
+          if ! pacman -S --noconfirm "$package" 2>/dev/null; then
+            echo "Warning: Failed to install $package, continuing..."
+          fi
+        done
+        
+        # Install optional packages
+        for package in "${optional_packages[@]}"; do
+          echo "Trying to install optional package $package..."
+          if ! pacman -S --noconfirm "$package" 2>/dev/null; then
+            echo "Info: Optional package $package not available for this architecture"
+          fi
+        done
+        
+        # Install core packages
+        for package in "${packages[@]}"; do
+          echo "Installing $package..."
+          if ! pacman -S --noconfirm "$package"; then
+            echo "Warning: Failed to install $package, continuing..."
+          fi
+        done
+        
+        # Try to install optional packages
+        for package in "${optional_packages[@]}"; do
+          echo "Trying to install optional package $package..."
+          if ! pacman -S --noconfirm "$package" 2>/dev/null; then
+            echo "Optional package $package not available, skipping..."
+          fi
+        done
     
     - name: Download FFmpeg source
       shell: msys2 {0}
@@ -242,7 +305,14 @@ jobs:
         mkdir -p dist/windows-${{ matrix.arch }}
         cp ffmpeg-src/ffmpeg.exe dist/windows-${{ matrix.arch }}/
         cp ffmpeg-src/ffprobe.exe dist/windows-${{ matrix.arch }}/
-        cp ffmpeg-src/ffplay.exe dist/windows-${{ matrix.arch }}/
+        
+        # Copy ffplay if it exists (requires SDL2)
+        if [ -f ffmpeg-src/ffplay.exe ]; then
+          cp ffmpeg-src/ffplay.exe dist/windows-${{ matrix.arch }}/
+        else
+          echo "ffplay not built (SDL2 not available)"
+        fi
+        
         strip dist/windows-${{ matrix.arch }}/*
     
     - name: Upload artifacts

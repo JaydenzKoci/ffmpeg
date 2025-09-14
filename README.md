@@ -10,12 +10,14 @@ This repository provides automated workflows and scripts to build FFmpeg for mul
 
 ## Features
 
-- Static builds with popular codecs included
-- GPL and non-free codec support
-- Automated GitHub Actions workflows
-- Local build scripts for development
-- Customizable codec selection
-- Debug and release build types
+- **Robust Configuration**: Automatically detects available codecs and configures accordingly
+- **Fallback Support**: Uses minimal configuration with built-in codecs if external libraries are missing
+- **Static Builds**: Self-contained binaries with popular codecs included
+- **GPL and Non-free Support**: Includes both open-source and proprietary codecs
+- **Automated Workflows**: GitHub Actions for continuous integration
+- **Cross-platform**: Linux, macOS, and Windows support
+- **Customizable**: Choose specific codecs and build types
+- **Debug Support**: Optional debug builds with symbols
 
 ## Quick Start
 
@@ -193,9 +195,19 @@ Test your build:
 ./dist/linux-x86_64-release/ffmpeg -version
 ./dist/linux-x86_64-release/ffprobe -version
 
+# Test ffplay if it exists (requires SDL2)
+if [ -f ./dist/linux-x86_64-release/ffplay ]; then
+  ./dist/linux-x86_64-release/ffplay -version
+fi
+
 # Windows
 .\dist\windows-x86_64-release\ffmpeg.exe -version
 .\dist\windows-x86_64-release\ffprobe.exe -version
+
+# Test ffplay if it exists
+if (Test-Path ".\dist\windows-x86_64-release\ffplay.exe") {
+  .\dist\windows-x86_64-release\ffplay.exe -version
+}
 ```
 
 Check available codecs:
@@ -211,9 +223,24 @@ Check available codecs:
 
 ### Common Issues
 
-1. **Missing dependencies**: Run the dependency installation commands for your platform
+1. **Missing dependencies**: The build system will automatically fall back to minimal configuration with built-in codecs
 2. **Build failures**: Check the build logs for specific error messages
-3. **Codec not found**: Ensure the codec library is installed and properly configured
+3. **Codec not found**: External codec libraries are optional - FFmpeg will build with available codecs
+4. **libmp3lame not found**: Install `lame` development package or the build will use built-in AAC instead
+
+### Codec Detection
+
+The build system automatically detects available codec libraries:
+- **Found**: Codec will be enabled in the build
+- **Missing**: Codec will be skipped, build continues with available codecs
+- **Fallback**: If too many codecs are missing, uses minimal configuration with built-in codecs
+
+### FFplay Availability
+
+FFplay (media player) requires SDL2 library:
+- **SDL2 Found**: ffplay will be built and included
+- **SDL2 Missing**: Only ffmpeg and ffprobe will be built
+- **Note**: This is normal and doesn't affect core FFmpeg functionality
 
 ### Debug Information
 

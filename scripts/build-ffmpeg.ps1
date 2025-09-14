@@ -103,28 +103,45 @@ function Test-Prerequisites {
 function Install-Dependencies {
     Write-Info "Installing dependencies via pacman for $Architecture..."
     
-    $packages = @(
+    # Core packages that should be available
+    $corePackages = @(
         "mingw-w64-$Architecture-x264",
         "mingw-w64-$Architecture-x265", 
         "mingw-w64-$Architecture-libvpx",
-        "mingw-w64-$Architecture-fdk-aac",
         "mingw-w64-$Architecture-lame",
-        "mingw-w64-$Architecture-libopus",
         "mingw-w64-$Architecture-libvorbis",
-        "mingw-w64-$Architecture-libtheora",
         "mingw-w64-$Architecture-libass",
         "mingw-w64-$Architecture-freetype",
         "mingw-w64-$Architecture-gnutls",
         "mingw-w64-$Architecture-SDL2"
     )
     
-    foreach ($package in $packages) {
+    # Optional packages that might not be available for all architectures
+    $optionalPackages = @(
+        "mingw-w64-$Architecture-fdk-aac",
+        "mingw-w64-$Architecture-opus",
+        "mingw-w64-$Architecture-libtheora"
+    )
+    
+    # Install core packages
+    foreach ($package in $corePackages) {
         Write-Info "Installing $package..."
-        & pacman -S --noconfirm $package
+        & pacman -S --noconfirm $package 2>$null
         if ($LASTEXITCODE -ne 0) {
             Write-Warning "Failed to install $package, continuing..."
         }
     }
+    
+    # Try to install optional packages
+    foreach ($package in $optionalPackages) {
+        Write-Info "Trying to install optional package $package..."
+        & pacman -S --noconfirm $package 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "Optional package $package not available, skipping..."
+        }
+    }
+    
+    Write-Info "Dependency installation completed (some packages may have been skipped)"
 }
 
 function Download-FFmpeg {
@@ -230,8 +247,12 @@ function Create-Distribution {
     # Copy binaries
     Copy-Item "ffmpeg.exe" "$distDir\"
     Copy-Item "ffprobe.exe" "$distDir\"
+    
+    # Copy ffplay if it exists (requires SDL2)
     if (Test-Path "ffplay.exe") {
         Copy-Item "ffplay.exe" "$distDir\"
+    } else {
+        Write-Warning "ffplay not built (SDL2 not available)"
     }
     
     # Strip binaries for release builds
@@ -268,6 +289,14 @@ function Test-Build {
     
     & "$distDir\ffmpeg.exe" -version | Select-Object -First 1
     & "$distDir\ffprobe.exe" -version | Select-Object -First 1
+    
+    # Test ffplay if it exists
+    if (Test-Path "$distDir\ffplay.exe") {
+        & "$distDir\ffplay.exe" -version | Select-Object -First 1
+        Write-Info "ffplay is available"
+    } else {
+        Write-Warning "ffplay not available (SDL2 not found)"
+    }
     
     if ($LASTEXITCODE -eq 0) {
         Write-Info "Build test completed successfully"

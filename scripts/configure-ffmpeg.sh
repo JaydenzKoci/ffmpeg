@@ -123,7 +123,7 @@ build_config() {
     fi
     
     # Audio codecs
-    if is_codec_requested "libfdk-aac" && check_library "fdk-aac" "fdk-aac"; then
+    if is_codec_requested "libfdk-aac" && (check_library "fdk-aac" "fdk-aac" || check_library "libfdk-aac" "libfdk-aac"); then
         config_opts="$config_opts --enable-libfdk-aac"
     fi
     
@@ -131,7 +131,7 @@ build_config() {
         config_opts="$config_opts --enable-libmp3lame"
     fi
     
-    if is_codec_requested "libopus" && check_library "opus" "opus"; then
+    if is_codec_requested "libopus" && (check_library "opus" "opus" || check_library "libopus" "libopus"); then
         config_opts="$config_opts --enable-libopus"
     fi
     
@@ -152,8 +152,12 @@ build_config() {
         config_opts="$config_opts --enable-gnutls"
     fi
     
-    if is_codec_requested "libsdl2" && check_library "sdl2" "sdl2"; then
+    # SDL2 is optional and only needed for ffplay
+    if check_library "sdl2" "sdl2"; then
         config_opts="$config_opts --enable-sdl2"
+        log "SDL2 found - ffplay will be built"
+    else
+        warn "SDL2 not found - ffplay will not be built"
     fi
     
     if is_codec_requested "libwebp" && check_library "webp" "libwebp"; then

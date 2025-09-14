@@ -71,6 +71,7 @@ else
 fi
 
 warn "Using minimal configuration with built-in codecs only"
+warn "ffplay will not be built (requires SDL2)"
 log "Configuration options:"
 echo "$CONFIG_OPTS" | tr ' ' '\n' | sed 's/^/  /'
 
