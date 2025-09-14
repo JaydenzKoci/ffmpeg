@@ -1,0 +1,306 @@
+name: Custom FFmpeg Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      ffmpeg_version:
+        description: 'FFmpeg version'
+        required: true
+        default: '6.1'
+      enable_codecs:
+        description: 'Additional codecs (comma-separated)'
+        required: false
+        default: 'libwebp,libaom,libsvtav1'
+      build_type:
+        description: 'Build type'
+        type: choice
+        options:
+        - release
+        - debug
+        default: release
+      platforms:
+        description: 'Platforms to build'
+        type: choice
+        options:
+        - all
+        - linux-only
+        - macos-only
+        default: all
+
+env:
+  FFMPEG_VERSION: ${{ github.event.inputs.ffmpeg_version }}
+  BUILD_TYPE: ${{ github.event.inputs.build_type }}
+
+jobs:
+  build-linux-custom:
+    if: ${{ github.event.inputs.platforms == 'all' || github.event.inputs.platforms == 'linux-only' }}
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup build environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          cmake \
+          yasm \
+          nasm \
+          pkg-config \
+          git \
+          wget \
+          autoconf \
+          automake \
+          libtool \
+          libx264-dev \
+          libx265-dev \
+          libvpx-dev \
+          libfdk-aac-dev \
+          libmp3lame-dev \
+          libopus-dev \
+          libvorbis-dev \
+          libtheora-dev \
+          libass-dev \
+          libfreetype6-dev \
+          libgnutls28-dev \
+          libsdl2-dev \
+          libwebp-dev \
+          libaom-dev
+    
+    - name: Build additional codecs
+      run: |
+        # SVT-AV1
+        if [[ "${{ github.event.inputs.enable_codecs }}" == *"libsvtav1"* ]]; then
+          git clone https://gitlab.com/AOMediaCodec/SVT-AV1.git
+          cd SVT-AV1/Build
+          cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF
+          make -j$(nproc)
+          sudo make install
+          cd ../..
+        fi
+    
+    - name: Download and build FFmpeg
+      run: |
+        wget https://ffmpeg.org/releases/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz
+        tar -xf ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz
+        cd ffmpeg-${{ env.FFMPEG_VERSION }}
+        
+        # Configure options
+        CONFIG_OPTS="--prefix=/usr/local \
+          --enable-gpl \
+          --enable-version3 \
+          --enable-nonfree \
+          --enable-static \
+          --disable-shared \
+          --enable-libx264 \
+          --enable-libx265 \
+          --enable-libvpx \
+          --enable-libfdk-aac \
+          --enable-libmp3lame \
+          --enable-libopus \
+          --enable-libvorbis \
+          --enable-libtheora \
+          --enable-libass \
+          --enable-libfreetype \
+          --enable-gnutls \
+          --enable-libsdl2"
+        
+        # Add optional codecs
+        if [[ "${{ github.event.inputs.enable_codecs }}" == *"libwebp"* ]]; then
+          CONFIG_OPTS="$CONFIG_OPTS --enable-libwebp"
+        fi
+        if [[ "${{ github.event.inputs.enable_codecs }}" == *"libaom"* ]]; then
+          CONFIG_OPTS="$CONFIG_OPTS --enable-libaom"
+        fi
+        if [[ "${{ github.event.inputs.enable_codecs }}" == *"libsvtav1"* ]]; then
+          CONFIG_OPTS="$CONFIG_OPTS --enable-libsvtav1"
+        fi
+        
+        # Debug build options
+        if [[ "${{ env.BUILD_TYPE }}" == "debug" ]]; then
+          CONFIG_OPTS="$CONFIG_OPTS --enable-debug --disable-optimizations --disable-stripping"
+        else
+          CONFIG_OPTS="$CONFIG_OPTS --enable-optimizations"
+        fi
+        
+        ./configure $CONFIG_OPTS
+        make -j$(nproc)
+        
+        # Create distribution
+        mkdir -p ../dist/linux-x86_64-custom
+        cp ffmpeg ../dist/linux-x86_64-custom/
+        cp ffprobe ../dist/linux-x86_64-custom/
+        cp ffplay ../dist/linux-x86_64-custom/
+        
+        if [[ "${{ env.BUILD_TYPE }}" == "release" ]]; then
+          strip ../dist/linux-x86_64-custom/*
+        fi
+    
+    - name: Test build
+      run: |
+        ./dist/linux-x86_64-custom/ffmpeg -version
+        ./dist/linux-x86_64-custom/ffprobe -version
+    
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ffmpeg-linux-x86_64-custom-${{ env.BUILD_TYPE }}
+        path: dist/linux-x86_64-custom/
+
+  build-macos-custom:
+    if: ${{ github.event.inputs.platforms == 'all' || github.event.inputs.platforms == 'macos-only' }}
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        arch: [x86_64, arm64]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup build environment
+      run: |
+        brew install \
+          cmake \
+          yasm \
+          nasm \
+          pkg-config \
+          x264 \
+          x265 \
+          libvpx \
+          fdk-aac \
+          lame \
+          opus \
+          libvorbis \
+          theora \
+          libass \
+          freetype \
+          gnutls \
+          sdl2 \
+          webp \
+          aom
+    
+    - name: Build SVT-AV1 (if needed)
+      if: contains(github.event.inputs.enable_codecs, 'libsvtav1')
+      run: |
+        git clone https://gitlab.com/AOMediaCodec/SVT-AV1.git
+        cd SVT-AV1/Build
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
+          -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }}
+        make -j$(sysctl -n hw.ncpu)
+        sudo make install
+    
+    - name: Download and build FFmpeg
+      run: |
+        wget https://ffmpeg.org/releases/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz
+        tar -xf ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz
+        cd ffmpeg-${{ env.FFMPEG_VERSION }}
+        
+        export MACOSX_DEPLOYMENT_TARGET="10.15"
+        export PKG_CONFIG_PATH="/opt/homebrew/lib/pkgconfig:/usr/local/lib/pkgconfig"
+        
+        # Configure options
+        CONFIG_OPTS="--prefix=/usr/local \
+          --arch=${{ matrix.arch }} \
+          --target-os=darwin \
+          --enable-cross-compile \
+          --enable-gpl \
+          --enable-version3 \
+          --enable-nonfree \
+          --enable-static \
+          --disable-shared \
+          --enable-libx264 \
+          --enable-libx265 \
+          --enable-libvpx \
+          --enable-libfdk-aac \
+          --enable-libmp3lame \
+          --enable-libopus \
+          --enable-libvorbis \
+          --enable-libtheora \
+          --enable-libass \
+          --enable-libfreetype \
+          --enable-gnutls \
+          --enable-libsdl2"
+        
+        # Add optional codecs
+        if [[ "${{ github.event.inputs.enable_codecs }}" == *"libwebp"* ]]; then
+          CONFIG_OPTS="$CONFIG_OPTS --enable-libwebp"
+        fi
+        if [[ "${{ github.event.inputs.enable_codecs }}" == *"libaom"* ]]; then
+          CONFIG_OPTS="$CONFIG_OPTS --enable-libaom"
+        fi
+        if [[ "${{ github.event.inputs.enable_codecs }}" == *"libsvtav1"* ]]; then
+          CONFIG_OPTS="$CONFIG_OPTS --enable-libsvtav1"
+        fi
+        
+        # Debug build options
+        if [[ "${{ env.BUILD_TYPE }}" == "debug" ]]; then
+          CONFIG_OPTS="$CONFIG_OPTS --enable-debug --disable-optimizations --disable-stripping"
+        fi
+        
+        ./configure $CONFIG_OPTS
+        make -j$(sysctl -n hw.ncpu)
+        
+        # Create distribution
+        mkdir -p ../dist/macos-${{ matrix.arch }}-custom
+        cp ffmpeg ../dist/macos-${{ matrix.arch }}-custom/
+        cp ffprobe ../dist/macos-${{ matrix.arch }}-custom/
+        cp ffplay ../dist/macos-${{ matrix.arch }}-custom/
+        
+        if [[ "${{ env.BUILD_TYPE }}" == "release" ]]; then
+          strip ../dist/macos-${{ matrix.arch }}-custom/*
+        fi
+    
+    - name: Test build
+      run: |
+        ./dist/macos-${{ matrix.arch }}-custom/ffmpeg -version
+        ./dist/macos-${{ matrix.arch }}-custom/ffprobe -version
+    
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ffmpeg-macos-${{ matrix.arch }}-custom-${{ env.BUILD_TYPE }}
+        path: dist/macos-${{ matrix.arch }}-custom/
+
+  package-custom-builds:
+    needs: [build-linux-custom, build-macos-custom]
+    if: always() && (needs.build-linux-custom.result == 'success' || needs.build-macos-custom.result == 'success')
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Download artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts/
+    
+    - name: Create packages
+      run: |
+        mkdir -p releases
+        cd artifacts
+        
+        for dir in */; do
+          if [ -d "$dir" ]; then
+            platform=$(basename "$dir")
+            tar -czf "../releases/${platform}.tar.gz" -C "$dir" .
+          fi
+        done
+        
+        cd ../releases
+        sha256sum *.tar.gz > checksums.txt
+        
+        # Create build info
+        cat > build-info.txt << EOF
+        FFmpeg Custom Build Information
+        ==============================
+        Version: ${{ env.FFMPEG_VERSION }}
+        Build Type: ${{ env.BUILD_TYPE }}
+        Additional Codecs: ${{ github.event.inputs.enable_codecs }}
+        Build Date: $(date -u)
+        Commit: ${{ github.sha }}
+        EOF
+    
+    - name: Upload release packages
+      uses: actions/upload-artifact@v4
+      with:
+        name: ffmpeg-custom-build-packages
+        path: releases/

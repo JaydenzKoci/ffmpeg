@@ -1,0 +1,257 @@
+name: Build FFmpeg
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      ffmpeg_version:
+        description: 'FFmpeg version to build'
+        required: false
+        default: '6.1'
+      enable_debug:
+        description: 'Enable debug build'
+        type: boolean
+        default: false
+
+env:
+  FFMPEG_VERSION: ${{ github.event.inputs.ffmpeg_version || '6.1' }}
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [x86_64]
+        include:
+          - arch: x86_64
+            cc: gcc
+            cxx: g++
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          yasm \
+          nasm \
+          pkg-config \
+          libx264-dev \
+          libx265-dev \
+          libvpx-dev \
+          libfdk-aac-dev \
+          libmp3lame-dev \
+          libopus-dev \
+          libvorbis-dev \
+          libtheora-dev \
+          libass-dev \
+          libfreetype6-dev \
+          libgnutls28-dev \
+          libsdl2-dev
+    
+    - name: Download FFmpeg source
+      run: |
+        wget https://ffmpeg.org/releases/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz
+        tar -xf ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz
+        mv ffmpeg-${{ env.FFMPEG_VERSION }} ffmpeg-src
+    
+    - name: Configure FFmpeg
+      run: |
+        cd ffmpeg-src
+        ./configure \
+          --prefix=/usr/local \
+          --enable-gpl \
+          --enable-version3 \
+          --enable-nonfree \
+          --enable-static \
+          --disable-shared \
+          --enable-libx264 \
+          --enable-libx265 \
+          --enable-libvpx \
+          --enable-libfdk-aac \
+          --enable-libmp3lame \
+          --enable-libopus \
+          --enable-libvorbis \
+          --enable-libtheora \
+          --enable-libass \
+          --enable-libfreetype \
+          --enable-gnutls \
+          --enable-libsdl2 \
+          --extra-cflags="-static" \
+          --extra-ldflags="-static" \
+          --pkg-config-flags="--static"
+    
+    - name: Build FFmpeg
+      run: |
+        cd ffmpeg-src
+        make -j$(nproc)
+    
+    - name: Create distribution
+      run: |
+        mkdir -p dist/linux-${{ matrix.arch }}
+        cp ffmpeg-src/ffmpeg dist/linux-${{ matrix.arch }}/
+        cp ffmpeg-src/ffprobe dist/linux-${{ matrix.arch }}/
+        cp ffmpeg-src/ffplay dist/linux-${{ matrix.arch }}/
+        strip dist/linux-${{ matrix.arch }}/*
+    
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ffmpeg-linux-${{ matrix.arch }}
+        path: dist/linux-${{ matrix.arch }}/
+
+  build-macos:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        arch: [x86_64, arm64]
+        include:
+          - arch: x86_64
+            target: x86_64-apple-darwin
+            deployment_target: "10.15"
+          - arch: arm64
+            target: arm64-apple-darwin
+            deployment_target: "11.0"
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install dependencies
+      run: |
+        brew install \
+          yasm \
+          nasm \
+          pkg-config \
+          x264 \
+          x265 \
+          libvpx \
+          fdk-aac \
+          lame \
+          opus \
+          libvorbis \
+          theora \
+          libass \
+          freetype \
+          gnutls \
+          sdl2
+    
+    - name: Download FFmpeg source
+      run: |
+        wget https://ffmpeg.org/releases/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz
+        tar -xf ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz
+        mv ffmpeg-${{ env.FFMPEG_VERSION }} ffmpeg-src
+    
+    - name: Configure FFmpeg
+      run: |
+        cd ffmpeg-src
+        export MACOSX_DEPLOYMENT_TARGET=${{ matrix.deployment_target }}
+        export PKG_CONFIG_PATH="/opt/homebrew/lib/pkgconfig:/usr/local/lib/pkgconfig"
+        
+        ./configure \
+          --prefix=/usr/local \
+          --arch=${{ matrix.arch }} \
+          --target-os=darwin \
+          --enable-cross-compile \
+          --enable-gpl \
+          --enable-version3 \
+          --enable-nonfree \
+          --enable-static \
+          --disable-shared \
+          --enable-libx264 \
+          --enable-libx265 \
+          --enable-libvpx \
+          --enable-libfdk-aac \
+          --enable-libmp3lame \
+          --enable-libopus \
+          --enable-libvorbis \
+          --enable-libtheora \
+          --enable-libass \
+          --enable-libfreetype \
+          --enable-gnutls \
+          --enable-libsdl2 \
+          --extra-cflags="-mmacosx-version-min=${{ matrix.deployment_target }}" \
+          --extra-ldflags="-mmacosx-version-min=${{ matrix.deployment_target }}"
+    
+    - name: Build FFmpeg
+      run: |
+        cd ffmpeg-src
+        make -j$(sysctl -n hw.ncpu)
+    
+    - name: Create distribution
+      run: |
+        mkdir -p dist/macos-${{ matrix.arch }}
+        cp ffmpeg-src/ffmpeg dist/macos-${{ matrix.arch }}/
+        cp ffmpeg-src/ffprobe dist/macos-${{ matrix.arch }}/
+        cp ffmpeg-src/ffplay dist/macos-${{ matrix.arch }}/
+        strip dist/macos-${{ matrix.arch }}/*
+    
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ffmpeg-macos-${{ matrix.arch }}
+        path: dist/macos-${{ matrix.arch }}/
+
+  create-release:
+    needs: [build-linux, build-macos]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts/
+    
+    - name: Create release packages
+      run: |
+        mkdir -p releases
+        
+        # Create tarballs for each platform
+        cd artifacts
+        for dir in */; do
+          platform=$(basename "$dir")
+          tar -czf "../releases/ffmpeg-${{ env.FFMPEG_VERSION }}-${platform}.tar.gz" -C "$dir" .
+        done
+    
+    - name: Generate checksums
+      run: |
+        cd releases
+        sha256sum *.tar.gz > checksums.txt
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ env.FFMPEG_VERSION }}-${{ github.run_number }}
+        name: FFmpeg ${{ env.FFMPEG_VERSION }} Build ${{ github.run_number }}
+        draft: false
+        prerelease: false
+        files: |
+          releases/*.tar.gz
+          releases/checksums.txt
+        body: |
+          ## FFmpeg ${{ env.FFMPEG_VERSION }} - Build ${{ github.run_number }}
+          
+          ### Platforms
+          - Linux x86_64
+          - macOS x86_64 (Intel)
+          - macOS arm64 (Apple Silicon)
+          
+          ### Features
+          - Static builds with popular codecs
+          - GPL and non-free codecs included
+          - Optimized for each platform
+          
+          ### Verification
+          ```bash
+          # Verify checksums
+          sha256sum -c checksums.txt
+          ```
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
