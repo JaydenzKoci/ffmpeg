@@ -34,10 +34,20 @@ jobs:
           install: >-
             mingw-w64-${{ matrix.arch == 'x64' && 'x86_64' || 'i686' }}-gcc
             mingw-w64-${{ matrix.arch == 'x64' && 'x86_64' || 'i686' }}-binutils
+            mingw-w64-${{ matrix.arch == 'x64' && 'x86_64' || 'i686' }}-tools-git
             mingw-w64-${{ matrix.arch == 'x64' && 'x86_64' || 'i686' }}-pkg-config
             mingw-w64-${{ matrix.arch == 'x64' && 'x86_64' || 'i686' }}-nasm
             make
             diffutils
+
+      - name: Verify toolchain
+        shell: msys2 {0}
+        run: |
+          echo "Checking toolchain availability..."
+          which ${{ matrix.arch == 'x64' && 'x86_64' || 'i686' }}-w64-mingw32-gcc || echo "GCC not found"
+          which ${{ matrix.arch == 'x64' && 'x86_64' || 'i686' }}-w64-mingw32-ar || echo "AR not found"
+          which ${{ matrix.arch == 'x64' && 'x86_64' || 'i686' }}-w64-mingw32-nm || echo "NM not found"
+          echo "PATH: $PATH"
       - name: Download FFmpeg source
         shell: msys2 {0}
         run: |
