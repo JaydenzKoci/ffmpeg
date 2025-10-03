@@ -32,22 +32,30 @@ jobs:
         with:
           msystem: MINGW${{ matrix.arch == 'x64' && '64' || '32' }}
           install: >-
-            mingw-w64-${{ matrix.arch == 'x64' && 'x86_64' || 'i686' }}-gcc
-            mingw-w64-${{ matrix.arch == 'x64' && 'x86_64' || 'i686' }}-binutils
-            mingw-w64-${{ matrix.arch == 'x64' && 'x86_64' || 'i686' }}-tools-git
-            mingw-w64-${{ matrix.arch == 'x64' && 'x86_64' || 'i686' }}-pkg-config
+            base-devel
+            mingw-w64-${{ matrix.arch == 'x64' && 'x86_64' || 'i686' }}-toolchain
             mingw-w64-${{ matrix.arch == 'x64' && 'x86_64' || 'i686' }}-nasm
-            make
             diffutils
 
       - name: Verify toolchain
         shell: msys2 {0}
         run: |
           echo "Checking toolchain availability..."
-          which ${{ matrix.arch == 'x64' && 'x86_64' || 'i686' }}-w64-mingw32-gcc || echo "GCC not found"
-          which ${{ matrix.arch == 'x64' && 'x86_64' || 'i686' }}-w64-mingw32-ar || echo "AR not found"
-          which ${{ matrix.arch == 'x64' && 'x86_64' || 'i686' }}-w64-mingw32-nm || echo "NM not found"
+          echo "Current environment: $MSYSTEM"
           echo "PATH: $PATH"
+          
+          # Check for cross-compilation tools
+          which ${{ matrix.arch == 'x64' && 'x86_64' || 'i686' }}-w64-mingw32-gcc || echo "Cross GCC not found"
+          which ${{ matrix.arch == 'x64' && 'x86_64' || 'i686' }}-w64-mingw32-ar || echo "Cross AR not found"
+          which ${{ matrix.arch == 'x64' && 'x86_64' || 'i686' }}-w64-mingw32-nm || echo "Cross NM not found"
+          
+          # List all available cross-compilation tools
+          echo "Available cross-compilation tools:"
+          find /usr /mingw* -name "*${{ matrix.arch == 'x64' && 'x86_64' || 'i686' }}-w64-mingw32*" 2>/dev/null | head -20 || echo "No cross tools found"
+          
+          # Check installed packages
+          echo "Installed toolchain packages:"
+          pacman -Q | grep -E "(toolchain|binutils|gcc)" | head -10
       - name: Download FFmpeg source
         shell: msys2 {0}
         run: |
