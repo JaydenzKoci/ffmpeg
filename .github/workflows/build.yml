@@ -37,25 +37,30 @@ jobs:
             mingw-w64-${{ matrix.arch == 'x64' && 'x86_64' || 'i686' }}-nasm
             diffutils
 
-      - name: Verify toolchain
+      - name: Setup cross-compilation tools
         shell: msys2 {0}
         run: |
-          echo "Checking toolchain availability..."
-          echo "Current environment: $MSYSTEM"
-          echo "PATH: $PATH"
+          echo "Setting up cross-compilation tools..."
           
-          # Check for cross-compilation tools
-          which ${{ matrix.arch == 'x64' && 'x86_64' || 'i686' }}-w64-mingw32-gcc || echo "Cross GCC not found"
-          which ${{ matrix.arch == 'x64' && 'x86_64' || 'i686' }}-w64-mingw32-ar || echo "Cross AR not found"
-          which ${{ matrix.arch == 'x64' && 'x86_64' || 'i686' }}-w64-mingw32-nm || echo "Cross NM not found"
+          # Create symlinks for traditional ar and nm tools
+          PREFIX="${{ matrix.arch == 'x64' && 'x86_64' || 'i686' }}-w64-mingw32"
           
-          # List all available cross-compilation tools
-          echo "Available cross-compilation tools:"
-          find /usr /mingw* -name "*${{ matrix.arch == 'x64' && 'x86_64' || 'i686' }}-w64-mingw32*" 2>/dev/null | head -20 || echo "No cross tools found"
+          # Check if gcc-ar and gcc-nm exist and create symlinks
+          if [ -f "/mingw${{ matrix.arch == 'x64' && '64' || '32' }}/bin/${PREFIX}-gcc-ar.exe" ]; then
+            ln -sf "/mingw${{ matrix.arch == 'x64' && '64' || '32' }}/bin/${PREFIX}-gcc-ar.exe" "/mingw${{ matrix.arch == 'x64' && '64' || '32' }}/bin/${PREFIX}-ar.exe"
+            echo "Created symlink for ${PREFIX}-ar"
+          fi
           
-          # Check installed packages
-          echo "Installed toolchain packages:"
-          pacman -Q | grep -E "(toolchain|binutils|gcc)" | head -10
+          if [ -f "/mingw${{ matrix.arch == 'x64' && '64' || '32' }}/bin/${PREFIX}-gcc-nm.exe" ]; then
+            ln -sf "/mingw${{ matrix.arch == 'x64' && '64' || '32' }}/bin/${PREFIX}-gcc-nm.exe" "/mingw${{ matrix.arch == 'x64' && '64' || '32' }}/bin/${PREFIX}-nm.exe"
+            echo "Created symlink for ${PREFIX}-nm"
+          fi
+          
+          # Verify tools are now available
+          echo "Verifying tools:"
+          which ${PREFIX}-gcc && echo "GCC: OK"
+          which ${PREFIX}-ar && echo "AR: OK"
+          which ${PREFIX}-nm && echo "NM: OK"
       - name: Download FFmpeg source
         shell: msys2 {0}
         run: |
